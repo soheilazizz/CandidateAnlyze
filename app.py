@@ -6,7 +6,44 @@ from pathlib import Path
 import streamlit as st
 from openai import OpenAI
 
-# --------- Helpers: extract text ----------
+# ---------------- UI (RTL + Font) ----------------
+st.set_page_config(page_title="ارزیابی کاندیدا", page_icon="🧠", layout="wide")
+
+st.markdown("""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;600;700&display=swap');
+
+html, body, [class*="css"]  {
+  font-family: 'Vazirmatn', sans-serif;
+}
+
+.rtl { direction: rtl; text-align: right; }
+.card {
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.08);
+  padding: 18px 18px;
+  border-radius: 16px;
+}
+.small { font-size: 0.92rem; opacity: .85; }
+.kpi {
+  display: inline-block;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.15);
+  margin-left: 8px;
+  margin-bottom: 8px;
+  font-size: 0.92rem;
+}
+hr { border: none; height: 1px; background: rgba(255,255,255,0.10); margin: 16px 0; }
+.stButton>button {
+  border-radius: 12px;
+  padding: 10px 16px;
+  font-weight: 700;
+}
+</style>
+""", unsafe_allow_html=True)
+
+# ---------------- Helpers: extract text ----------------
 def extract_text_from_upload(uploaded_file) -> str:
     name = uploaded_file.name.lower()
 
@@ -33,11 +70,10 @@ def extract_text_from_upload(uploaded_file) -> str:
 def transcribe_audio_bytes(file_bytes: bytes, filename: str) -> str:
     api_key = os.getenv("AVALAI_API_KEY")
     if not api_key:
-        raise RuntimeError("AVALAI_API_KEY در Secrets ست نشده.")
+        raise RuntimeError("کلید AVALAI_API_KEY در Secrets ست نشده.")
 
     client = OpenAI(base_url="https://api.avalai.ir/v1", api_key=api_key)
 
-    # موقت روی دیسک (برای SDK)
     tmp_path = Path("/tmp") / filename
     tmp_path.write_bytes(file_bytes)
 
@@ -59,9 +95,12 @@ def transcribe_audio_bytes(file_bytes: bytes, filename: str) -> str:
 
 def generate_report(resume_text: str, jd_text: str, interview_asr: str) -> str:
     api_key = os.getenv("AVALAI_API_KEY")
+    if not api_key:
+        raise RuntimeError("کلید AVALAI_API_KEY در Secrets ست نشده.")
+
     client = OpenAI(base_url="https://api.avalai.ir/v1", api_key=api_key)
 
-    SYSTEM = "You are a strict, evidence-based HR & business strategy interviewer. Be concise and avoid fluff."
+    SYSTEM = "You are a strict, evidence-based HR evaluator. Be concise, structured, and avoid fluff."
 
     ASR_NOTE_FA = """
 متن مصاحبه زیر خروجی خام تبدیل گفتار به متن (ASR) است و ممکن است شامل غلط املایی،
@@ -72,49 +111,48 @@ def generate_report(resume_text: str, jd_text: str, interview_asr: str) -> str:
     FORMAT_SPEC = f"""
 گزارش ارزیابی کاندیدا — نسخه یک‌صفحه‌ای (فارسی)
 
-قالب خروجی باید دقیقاً بخش‌های زیر را داشته باشد و شماره‌گذاری حفظ شود:
-
-نام کاندیدا: (از رزومه استخراج کن؛ اگر نبود بنویس "نامشخص")
-عنوان شغل: (از JD استخراج کن)
+نام کاندیدا: (از رزومه استخراج کن؛ اگر نبود "نامشخص")
+عنوان شغل: (از JD استخراج کن؛ اگر نبود "نامشخص")
 تاریخ گزارش: {date.today().strftime("%Y-%m-%d")}
 منابع بررسی: رزومه + فایل صوتی مصاحبه (خروجی ASR)
 
 1) جمع‌بندی مدیریتی
 - امتیاز تناسب کلی (Fit Score): XX/100 | سطح اطمینان: کم/متوسط/بالا
-- پیشنهاد: Yes / No / Maybe (مشروط/غیرمشروط)
+- پیشنهاد: Yes / No / Maybe (در صورت نیاز مشروط)
 - چرا مثبت؟ (۲-۳ جمله)
 - ریسک اصلی: (۱-۲ جمله)
 
 2) نقاط قوت کلیدی (Strengths)
-
 3) نقاط ضعف / ریسک‌ها (Weaknesses & Risks)
 
 4) تحلیل تناسب مهارتی (Resume vs JD)
-- Must-have ها (کلیدی): یک جدول 3 ستونه با سرفصل‌های:
-  نیاز شغلی | شواهد از رزومه/مصاحبه | میزان تطابق (پایین/متوسط/بالا)
+| نیاز شغلی | شواهد از رزومه/مصاحبه | میزان تطابق |
+|---|---|---|
+| ... | ... | پایین/متوسط/بالا |
+
 - شکاف‌ها (Gaps): 2 تا 4 مورد با Impact: Low/Medium/High
 
-5) تحلیل مصاحبه (نشانه‌های سبک کاری از لحن و پاسخ‌ها)
+5) تحلیل مصاحبه (سبک کاری از لحن و پاسخ‌ها)
 - ساختار پاسخ‌گویی/شفافیت/مالکیت/ریسک‌های ارتباطی + دلیل کوتاه
-- نمونه شواهد: دو Quote کوتاه
+- 2 Quote کوتاه
 
 6) سازگاری ادعاها (Resume vs Interview)
 7) پیشنهاد برای دور بعد (سوالات هدفمند)
 8) نتیجه نهایی
 
 مبنای Fit Score را صریح و ساده توضیح بده:
-- چهار معیار: درک استراتژیک، تحلیل و تصمیم‌گیری، نگاه اجرایی، نشانه‌های رفتاری
-- شواهد هر معیار را ذکر کن و بگو چرا امتیاز بالا/پایین شده.
+- 4 معیار: درک استراتژیک، تحلیل و تصمیم‌گیری، نگاه اجرایی، نشانه‌های رفتاری
+- برای هر معیار: امتیاز + شواهد + دلیل
 """
 
     prompt = f"""
 {FORMAT_SPEC}
 
-قوانین حیاتی:
-- فقط بر اساس این سه ورودی قضاوت کن: JD، رزومه، متن مصاحبه
+قوانین:
+- فقط بر اساس سه ورودی قضاوت کن: JD، رزومه، متن مصاحبه
 - متن مصاحبه ASR خام است: {ASR_NOTE_FA}
-- از شعار دوری کن؛ شواهد کوتاه بده.
-- اگر چیزی در داده‌ها نیست، "نامشخص/یافت نشد" بنویس.
+- اگر داده نداریم: "نامشخص/یافت نشد"
+- از قطعیت‌نمایی روانشناسانه پرهیز کن؛ نشانه‌ها را احتمالی بیان کن.
 
 [JD]
 {jd_text}
@@ -132,7 +170,7 @@ def generate_report(resume_text: str, jd_text: str, interview_asr: str) -> str:
             {"role": "system", "content": SYSTEM},
             {"role": "user", "content": prompt},
         ],
-        temperature=0.3,
+        temperature=0.2,
     )
     return resp.choices[0].message.content
 
@@ -154,7 +192,6 @@ def report_to_docx_bytes(report_text: str) -> bytes:
     add_rtl("گزارش ارزیابی کاندیدا — نسخه یک‌صفحه‌ای", bold=True, size=14)
     doc.add_paragraph("")
 
-    # ساده: خط به خط
     for line in report_text.splitlines():
         line = line.strip()
         if not line:
@@ -174,38 +211,78 @@ def report_to_docx_bytes(report_text: str) -> bytes:
     return bio.getvalue()
 
 
-# --------- UI ----------
-st.set_page_config(page_title="Candidate Evaluator (FA)", page_icon="🧠", layout="centered")
-st.title("🧠 ارزیابی کاندیدا از روی مصاحبه + رزومه + آگهی شغلی")
+# ---------------- Header ----------------
+st.markdown("""
+<div class="rtl">
+  <h1>🧠 ارزیابی کاندیدا</h1>
+  <div class="small">ورودی: فایل صوت/ویدئو مصاحبه + رزومه + آگهی شغلی → خروجی: گزارش ساختاریافته + فایل Word</div>
+</div>
+<hr/>
+""", unsafe_allow_html=True)
 
-st.caption("آپلود ۳ فایل → تبدیل گفتار به متن → تحلیل ساختاریافته → خروجی Word")
+# ---------------- Layout ----------------
+left, right = st.columns([1, 1], gap="large")
 
-audio = st.file_uploader("فایل صوت/ویدئو مصاحبه", type=["mp3","wav","m4a","mp4","mpeg","mpga","ogg","oga","webm","flac"])
-resume = st.file_uploader("رزومه (pdf/docx/txt)", type=["pdf","docx","txt"])
-jd = st.file_uploader("آگهی شغلی (pdf/docx/txt)", type=["pdf","docx","txt"])
+with left:
+    st.markdown('<div class="card rtl">', unsafe_allow_html=True)
+    st.subheader("1) ورودی‌ها")
 
-if st.button("تولید گزارش"):
+    audio = st.file_uploader("فایل صوت/ویدئو مصاحبه", type=["mp3","wav","m4a","mp4","mpeg","mpga","ogg","oga","webm","flac"])
+    resume = st.file_uploader("رزومه (pdf/docx/txt)", type=["pdf","docx","txt"])
+    jd = st.file_uploader("آگهی شغلی (pdf/docx/txt)", type=["pdf","docx","txt"])
+
+    st.markdown('<div class="small">نکته: متن مصاحبه خروجی خام ASR است؛ غلط‌ املایی را معیار قضاوت قرار نمی‌دهیم.</div>', unsafe_allow_html=True)
+
+    run = st.button("✅ تولید گزارش", use_container_width=True)
+    st.markdown('</div>', unsafe_allow_html=True)
+
+with right:
+    st.markdown('<div class="card rtl">', unsafe_allow_html=True)
+    st.subheader("2) خروجی")
+    st.markdown('<div class="small">پس از تولید، متن گزارش اینجا نمایش داده می‌شود و فایل Word قابل دانلود خواهد بود.</div>', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
+
+# ---------------- Run pipeline ----------------
+if run:
     if not (audio and resume and jd):
         st.error("هر ۳ فایل را آپلود کن.")
         st.stop()
 
-    with st.spinner("در حال تبدیل صوت به متن..."):
+    progress = st.progress(0, text="شروع فرآیند...")
+
+    try:
+        progress.progress(15, text="تبدیل صوت به متن...")
         interview_text = transcribe_audio_bytes(audio.getvalue(), audio.name)
 
-    with st.spinner("در حال استخراج متن رزومه و JD..."):
+        progress.progress(40, text="استخراج متن رزومه و آگهی شغلی...")
         resume_text = extract_text_from_upload(resume)
         jd_text = extract_text_from_upload(jd)
 
-    with st.spinner("در حال تولید گزارش نهایی..."):
+        progress.progress(70, text="تولید گزارش نهایی...")
         report_text = generate_report(resume_text, jd_text, interview_text)
 
-    st.success("گزارش تولید شد.")
-    st.text_area("خروجی گزارش", report_text, height=420)
+        progress.progress(90, text="ساخت فایل Word...")
+        docx_bytes = report_to_docx_bytes(report_text)
 
-    docx_bytes = report_to_docx_bytes(report_text)
-    st.download_button(
-        "دانلود گزارش Word",
-        data=docx_bytes,
-        file_name="candidate_report.docx",
-        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    )
+        progress.progress(100, text="انجام شد ✅")
+
+        st.markdown("<hr/>", unsafe_allow_html=True)
+
+        # KPIs quick extraction (simple)
+        st.markdown('<div class="rtl">', unsafe_allow_html=True)
+        st.markdown("### خلاصه سریع")
+        st.markdown('<span class="kpi">✅ گزارش تولید شد</span>', unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+
+        st.text_area("متن گزارش", report_text, height=420)
+
+        st.download_button(
+            "⬇️ دانلود گزارش Word",
+            data=docx_bytes,
+            file_name="candidate_report.docx",
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            use_container_width=True
+        )
+
+    except Exception as e:
+        st.error(f"خطا: {e}")
